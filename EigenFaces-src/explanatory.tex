@@ -1,0 +1,385 @@
+\documentclass{beamer}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{amsmath}
+
+% Configure listings for Python code
+\definecolor{mygray}{rgb}{0.5,0.5,0.5}
+\definecolor{mygreen}{rgb}{0,0.6,0}
+\definecolor{mymauve}{rgb}{0.58,0,0.82}
+\lstset{%
+  language=Python,
+  basicstyle=\tiny\ttfamily,
+  numbers=left,
+  numberstyle=\tiny\color{mygray},
+  stepnumber=1,
+  numbersep=5pt,
+  backgroundcolor=\color{white},
+  showspaces=false,
+  showstringspaces=false,
+  showtabs=false,
+  frame=single,
+  tabsize=2,
+  captionpos=b,
+  breaklines=true,
+  breakatwhitespace=false,
+  keywordstyle=\color{blue},
+  commentstyle=\color{mygreen},
+  stringstyle=\color{mymauve},
+}
+
+\title{Facial Recognition with PCA (Eigenfaces) --- From Scratch}
+\author{Your Name}
+\institute{Your Institution}
+\date{\today}
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+\begin{frame}
+  \frametitle{Outline}
+  \tableofcontents
+\end{frame}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Introduction}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{frame}
+  \frametitle{Introduction}
+  \begin{itemize}
+    \item This presentation explains a facial recognition system using PCA (Eigenfaces) implemented entirely from scratch.
+    \item No external libraries like NumPy or scikit-learn are used; only built-in Python modules, \texttt{math}, and \texttt{matplotlib} for visualization.
+    \item The code demonstrates:
+      \begin{itemize}
+        \item Basic mathematical operations and matrix arithmetic.
+        \item Image loading and preprocessing.
+        \item PCA calculation via the covariance trick and power iteration.
+        \item Projection of images and matching using Euclidean distance.
+      \end{itemize}
+  \end{itemize}
+\end{frame}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Helper Math Functions and Matrix Operations}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{frame}[fragile]
+  \frametitle{Helper Math Functions}
+  \begin{itemize}
+    \item \texttt{dot(v, w)}: Computes the dot product of two vectors.
+    \item \texttt{vector\_add(v, w)}: Adds two vectors elementwise.
+    \item \texttt{vector\_sub(v, w)}: Subtracts two vectors elementwise.
+    \item \texttt{scalar\_mult(v, s)}: Multiplies each element of a vector by a scalar.
+    \item \texttt{norm(v)}: Computes the Euclidean norm.
+  \end{itemize}
+  \vspace{5mm}
+  These functions allow us to perform linear algebra calculations using only Python lists.
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Matrix Multiplication}
+  \begin{lstlisting}
+def mat_mult(A, B):
+    """Multiply two matrices A and B."""
+    m = len(A)
+    n = len(A[0])
+    p = len(B[0])
+    result = [[0.0 for _ in range(p)] for _ in range(m)]
+    for i in range(m):
+        for j in range(p):
+            for k in range(n):
+                result[i][j] += A[i][k] * B[k][j]
+    return result
+  \end{lstlisting}
+  This function implements matrix multiplication using triple for‑loops.
+\end{frame}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Image Loading and Processing}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{frame}[fragile]
+  \frametitle{Image Loading \& Processing}
+  \begin{itemize}
+    \item \texttt{load\_image(filepath)}: Uses \texttt{matplotlib.image.imread} to load an image and converts it to grayscale if needed.
+    \item \texttt{flatten\_image(img)}: Flattens a 2D image into a 1D list.
+    \item \texttt{load\_dataset(folder)}: Loads all image files from a folder and extracts labels from filenames.
+  \end{itemize}
+  \vspace{3mm}
+  The images must be in folders (e.g., ``train'' and ``test'') with filenames starting with a label (e.g., \texttt{0\_face1.png}).
+\end{frame}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{PCA Computation}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{frame}[fragile]
+  \frametitle{Computing the Mean Face}
+  \begin{lstlisting}
+def compute_mean_face(images):
+    n = len(images)
+    m = len(images[0])
+    mean_face = [0.0] * m
+    for face in images:
+        for i in range(m):
+            mean_face[i] += face[i]
+    mean_face = [x / n for x in mean_face]
+    return mean_face
+  \end{lstlisting}
+  This function averages all training images to produce the \emph{mean face}.
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Centering the Images}
+  \begin{lstlisting}
+def center_images(images, mean_face):
+    centered = []
+    for face in images:
+        centered_face = [face[i] - mean_face[i] for i in range(len(face))]
+        centered.append(centered_face)
+    return centered
+  \end{lstlisting}
+  Each image is centered by subtracting the mean face.
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Covariance Matrix (Using the Trick)}
+  \begin{lstlisting}
+def compute_covariance_matrix(X):
+    n = len(X)
+    L = [[0.0 for _ in range(n)] for _ in range(n)]
+    for i in range(n):
+        for j in range(n):
+            L[i][j] = dot(X[i], X[j])
+    return L
+  \end{lstlisting}
+  Instead of working with a huge covariance matrix in pixel space, we compute the smaller matrix \(L = XX^T\).
+\end{frame}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Eigen Decomposition}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{frame}[fragile]
+  \frametitle{Power Iteration}
+  \begin{lstlisting}
+def power_iteration(A, num_iter=100, tol=1e-6):
+    n = len(A)
+    v = [1.0 for _ in range(n)]
+    v_norm = norm(v)
+    v = [x / v_norm for x in v]
+    for _ in range(num_iter):
+        Av = [sum(A[i][j] * v[j] for j in range(n)) for i in range(n)]
+        Av_norm = norm(Av)
+        new_v = [x / Av_norm for x in Av]
+        diff = sum(abs(new_v[i] - v[i]) for i in range(n))
+        v = new_v
+        if diff < tol:
+            break
+    eigenvalue = dot(v, [sum(A[i][j] * v[j] for j in range(n)) for i in range(n)])
+    return eigenvalue, v
+  \end{lstlisting}
+  This function estimates the dominant eigenvalue/eigenvector pair via power iteration.
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Deflation}
+  \begin{lstlisting}
+def deflate(A, eigenvalue, eigenvector):
+    n = len(A)
+    for i in range(n):
+        for j in range(n):
+            A[i][j] -= eigenvalue * eigenvector[i] * eigenvector[j]
+    return A
+  \end{lstlisting}
+  Once an eigenpair is found, deflation removes its influence from the matrix.
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Extracting Top \(k\) Eigenpairs}
+  \begin{lstlisting}
+def top_k_eigen(L, k):
+    eigenvalues = []
+    eigenvectors = []
+    A = [row[:] for row in L]
+    for _ in range(k):
+        eigenvalue, evector = power_iteration(A)
+        eigenvalues.append(eigenvalue)
+        eigenvectors.append(evector)
+        A = deflate(A, eigenvalue, evector)
+    return eigenvalues, eigenvectors
+  \end{lstlisting}
+  Iteratively finds the top \(k\) eigenvalues and eigenvectors of the covariance trick matrix \(L\).
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Computing Eigenfaces}
+  \begin{lstlisting}
+def compute_eigenfaces(X_centered, eigenvectors):
+    n = len(X_centered)
+    m = len(X_centered[0])
+    eigenfaces = []
+    for v in eigenvectors:
+        face = []
+        for j in range(m):
+            val = sum(X_centered[i][j] * v[i] for i in range(n))
+            face.append(val)
+        f_norm = norm(face)
+        if f_norm != 0:
+            face = [x / f_norm for x in face]
+        eigenfaces.append(face)
+    return eigenfaces
+  \end{lstlisting}
+  The eigenvectors of \(L\) are back-projected into the original pixel space to form the eigenfaces.
+\end{frame}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Projection and Recognition}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{frame}[fragile]
+  \frametitle{Projecting Images}
+  \begin{lstlisting}
+def project_image(image, eigenfaces):
+    return [dot(image, ef) for ef in eigenfaces]
+  \end{lstlisting}
+  Projects a centered image into the reduced eigenface space by taking dot products with each eigenface.
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Matching Faces}
+  \begin{lstlisting}
+def euclidean_distance(v1, v2):
+    return math.sqrt(sum((a - b) ** 2 for a, b in zip(v1, v2)))
+
+def match_face(test_proj, train_projs):
+    best_index = 0
+    best_distance = euclidean_distance(test_proj, train_projs[0])
+    for i in range(1, len(train_projs)):
+        d = euclidean_distance(test_proj, train_projs[i])
+        if d < best_distance:
+            best_distance = d
+            best_index = i
+    return best_index
+  \end{lstlisting}
+  These functions compute the Euclidean distance between the test image and all training images to find the best match.
+\end{frame}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Main Routine Overview}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{frame}[fragile]
+  \frametitle{Main Routine: Data Preparation}
+  \begin{lstlisting}
+def main():
+    # Specify folders with images (filenames begin with label)
+    train_folder = "train"
+    test_folder = "test"
+    
+    # Load the datasets
+    train_images, train_labels = load_dataset(train_folder)
+    test_images, test_labels = load_dataset(test_folder)
+    
+    # Compute and subtract the mean face
+    mean_face = compute_mean_face(train_images)
+    train_centered = center_images(train_images, mean_face)
+    test_centered = center_images(test_images, mean_face)
+  \end{lstlisting}
+  Loads images, extracts labels, and centers the data by subtracting the mean face.
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Main Routine: PCA and Eigenface Computation}
+  \begin{lstlisting}
+    # Compute covariance matrix via the "trick"
+    L = compute_covariance_matrix(train_centered)
+    
+    # Extract top eigenpairs (e.g., using 5 components for demo)
+    num_components = min(5, len(train_centered))
+    eigen_vals, eigen_vecs = top_k_eigen(L, num_components)
+    
+    # Form the eigenfaces
+    eigenfaces = compute_eigenfaces(train_centered, eigen_vecs)
+  \end{lstlisting}
+  This section performs the PCA: forming the covariance matrix, computing eigenpairs, and finally generating eigenfaces.
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Main Routine: Projection, Recognition, \& Evaluation}
+  \begin{lstlisting}
+    # Project images into eigenface space
+    train_projections = [project_image(face, eigenfaces) for face in train_centered]
+    test_projections  = [project_image(face, eigenfaces) for face in test_centered]
+    
+    # Identify best match for each test image
+    predicted = []
+    for test_proj in test_projections:
+        idx = match_face(test_proj, train_projections)
+        predicted.append(train_labels[idx])
+    
+    # Compute recognition accuracy
+    correct = sum(1 for a, b in zip(predicted, test_labels) if a == b)
+    accuracy = correct / len(test_labels)
+    print("Facial recognition accuracy: {:.2f}%".format(accuracy * 100))
+  \end{lstlisting}
+  Projects each test image, compares them with training projections, and computes the accuracy.
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Main Routine: Visualization}
+  \begin{lstlisting}
+    # Determine image dimensions (assumed square)
+    img_dim = int(math.sqrt(len(train_images[0])))
+    num_display = min(3, len(test_images))
+    fig, axes = plt.subplots(2, num_display, figsize=(10, 5))
+    
+    for i in range(num_display):
+        # Display the test image
+        test_img = test_images[i]
+        axes[0, i].imshow([test_img[j*img_dim:(j+1)*img_dim] for j in range(img_dim)], cmap='gray')
+        axes[0, i].set_title("Test label: " + str(test_labels[i]))
+        axes[0, i].axis('off')
+        
+        # Find and display the best matching training image
+        match_idx = match_face(test_projections[i], train_projections)
+        train_img = train_images[match_idx]
+        axes[1, i].imshow([train_img[j*img_dim:(j+1)*img_dim] for j in range(img_dim)], cmap='gray')
+        axes[1, i].set_title("Matched: " + str(train_labels[match_idx]))
+        axes[1, i].axis('off')
+        
+    plt.suptitle("Facial Recognition Results")
+    plt.show()
+
+if __name__ == '__main__':
+    main()
+  \end{lstlisting}
+  The final portion visualizes a few test images and their best-matched training images.
+\end{frame}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Conclusion}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{frame}
+  \frametitle{Conclusion}
+  \begin{itemize}
+    \item We implemented a facial recognition system using PCA (Eigenfaces) entirely from scratch.
+    \item The approach includes custom linear algebra functions, image preprocessing, PCA via power iteration, and recognition by Euclidean distance.
+    \item While educational, this code is not optimized for performance; optimized libraries should be used in production.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Questions}
+  \centering
+  \Large Thank you! \\
+  \vspace{10mm}
+  Questions?
+\end{frame}
+
+\end{document}
