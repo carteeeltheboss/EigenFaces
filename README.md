@@ -22,7 +22,7 @@ A comprehensive face recognition system with additional features like age, gende
 
 1. Clone the repository
 ```bash
-git clone https://github.com/yourusername/FaceRecognition-GUI-APP.git
+git clone git@github.com:carteeeltheboss/EigenFaces.git
 cd FaceRecognition-GUI-APP
 ```
 
@@ -131,7 +131,7 @@ python app-gui.py
 
 Install all dependencies using:
 ```bash
-pip install -r requirements.txt
+pip install -r req.txt
 ```
 
 For GPU support (recommended for better performance):
