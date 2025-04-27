@@ -23,7 +23,7 @@ A comprehensive face recognition system with additional features like age, gende
 1. Clone the repository
 ```bash
 git clone git@github.com:carteeeltheboss/EigenFaces.git
-cd FaceRecognition-GUI-APP
+cd facialRecon
 ```
 
 2. Create a virtual environment (recommended)
